@@ -1,19 +1,72 @@
-# Virtual environment
+# =========================
+# Virtual Environment
+# =========================
 .venv/
+venv/
+env/
 
-# Python cache
+# =========================
+# Python Cache / Compiled
+# =========================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
-# Environment variables
+# =========================
+# Environment Variables
+# =========================
 .env
+.env.*
+!.env.example
 
-# Database
+# =========================
+# Database Files (local dev only)
+# =========================
 *.db
 *.sqlite3
 
-# VS Code
-.vscode/
+# =========================
+# Logs
+# =========================
+*.log
 
-# Alembic cache
+# =========================
+# VS Code / IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Alembic Cache
+# =========================
 alembic/__pycache__/
+
+# =========================
+# Test / Coverage
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Build / Distribution
+# =========================
+dist/
+build/
+*.egg-info/
+
+# =========================
+# Mypy / Type Checking
+# =========================
+.mypy_cache/
+
+# =========================
+# Docker (optional)
+# =========================
+docker-compose.override.yml
