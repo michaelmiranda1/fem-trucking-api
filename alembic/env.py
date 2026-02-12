@@ -1,12 +1,12 @@
 # alembic/env.py
 from __future__ import annotations
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from config import settings
 from db import Base
 import models  # noqa: F401  (registers models on Base.metadata)
 
@@ -15,14 +15,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("MYSQL_URL")
-if not database_url:
-    raise RuntimeError(
-        "MYSQL_URL is not set. Example:\n"
-        "$env:MYSQL_URL='mysql+pymysql://user:pass@localhost:3306/dbname'"
-    )
-
-config.set_main_option("sqlalchemy.url", database_url)
+# Set Alembic DB URL from Settings (.env)
+config.set_main_option("sqlalchemy.url", settings.MYSQL_URL)
 
 target_metadata = Base.metadata
 
@@ -42,7 +36,11 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    engine = create_engine(database_url, poolclass=pool.NullPool, future=True)
+    engine = create_engine(
+        config.get_main_option("sqlalchemy.url"),
+        poolclass=pool.NullPool,
+        future=True,
+    )
 
     with engine.connect() as connection:
         context.configure(
