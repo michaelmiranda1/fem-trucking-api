@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import Optional, Literal
+from typing import Optional, List
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import func, or_
@@ -30,28 +30,45 @@ def paginate(total: int, page: int, page_size: int) -> int:
     return max(1, math.ceil(total / page_size)) if page_size > 0 else 1
 
 
-def apply_sorting(model, sort_by: str, sort_dir: str, allowed: dict):
+def parse_sort(sort: Optional[str]) -> List[str]:
     """
-    allowed = {"driver_name": Driver.driver_name, ...}
+    sort="driver_name,-created_at"
+    returns ["driver_name", "-created_at"]
     """
-    if sort_by not in allowed:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid sort_by '{sort_by}'. Allowed: {sorted(list(allowed.keys()))}",
-        )
+    if not sort:
+        return []
+    parts = [p.strip() for p in sort.split(",")]
+    return [p for p in parts if p]
 
-    col = allowed[sort_by]
-    sort_dir = (sort_dir or "asc").lower()
 
-    if sort_dir == "asc":
-        return col.asc()
-    if sort_dir == "desc":
-        return col.desc()
+def build_order_by(sort: Optional[str], allowed: dict, default: List[str]) -> List:
+    """
+    allowed: {"driver_name": Driver.driver_name, ...}
+    default: ["-updated_at", "driver_id"] etc
+    """
+    fields = parse_sort(sort) or default
 
-    raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail="Invalid sort_dir. Use 'asc' or 'desc'.",
-    )
+    order_clauses = []
+    seen = set()
+
+    for token in fields:
+        desc = token.startswith("-")
+        key = token[1:] if desc else token
+
+        if key not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid sort field '{key}'. Allowed: {sorted(list(allowed.keys()))}",
+            )
+
+        if key in seen:
+            continue
+        seen.add(key)
+
+        col = allowed[key]
+        order_clauses.append(col.desc() if desc else col.asc())
+
+    return order_clauses
 
 
 # -------------------------
@@ -87,8 +104,11 @@ def list_drivers(
     page_size: int = Query(25, ge=1, le=200),
     search: Optional[str] = Query(None, min_length=1, max_length=100),
     is_active: Optional[bool] = None,
-    sort_by: str = Query("driver_id"),
-    sort_dir: Literal["asc", "desc"] = Query("asc"),
+    sort: Optional[str] = Query(
+        None,
+        description="Comma-separated sort fields. Use '-' for DESC. Example: sort=driver_name,-created_at",
+        max_length=200,
+    ),
 ):
     q = db.query(Driver)
 
@@ -108,10 +128,18 @@ def list_drivers(
         "created_at": Driver.created_at,
         "updated_at": Driver.updated_at,
     }
-    order_clause = apply_sorting(Driver, sort_by, sort_dir, allowed)
+
+    # Default sort (stable): newest updated first, then id
+    default_sort = ["-updated_at", "driver_id"]
+
+    order_by = build_order_by(sort, allowed, default_sort)
+
+    # Ensure stable ordering even if user doesn't include driver_id
+    if all("driver_id" not in s.lstrip("-") for s in parse_sort(sort)):
+        order_by.append(Driver.driver_id.asc())
 
     items = (
-        q.order_by(order_clause)
+        q.order_by(*order_by)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
@@ -195,8 +223,11 @@ def list_trucks(
     search: Optional[str] = Query(None, min_length=1, max_length=100),
     driver_id: Optional[int] = None,
     is_active: Optional[bool] = None,
-    sort_by: str = Query("truck_id"),
-    sort_dir: Literal["asc", "desc"] = Query("asc"),
+    sort: Optional[str] = Query(
+        None,
+        description="Comma-separated sort fields. Use '-' for DESC. Example: sort=unit_number,-created_at",
+        max_length=200,
+    ),
 ):
     q = db.query(Truck)
 
@@ -228,10 +259,18 @@ def list_trucks(
         "created_at": Truck.created_at,
         "updated_at": Truck.updated_at,
     }
-    order_clause = apply_sorting(Truck, sort_by, sort_dir, allowed)
+
+    # Default sort (stable): newest updated first, then id
+    default_sort = ["-updated_at", "truck_id"]
+
+    order_by = build_order_by(sort, allowed, default_sort)
+
+    # Ensure stable ordering even if user doesn't include truck_id
+    if all("truck_id" not in s.lstrip("-") for s in parse_sort(sort)):
+        order_by.append(Truck.truck_id.asc())
 
     items = (
-        q.order_by(order_clause)
+        q.order_by(*order_by)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
