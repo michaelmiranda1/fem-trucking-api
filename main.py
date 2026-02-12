@@ -1,8 +1,7 @@
 # main.py
 from __future__ import annotations
 
-import math
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy import func, or_
@@ -19,56 +18,9 @@ from schemas import (
     TruckOut,
     TruckUpdate,
 )
+from utils.query import build_order_by, total_pages
 
 app = FastAPI(title="FEM Trucking API")
-
-
-# -------------------------
-# Helpers
-# -------------------------
-def paginate(total: int, page: int, page_size: int) -> int:
-    return max(1, math.ceil(total / page_size)) if page_size > 0 else 1
-
-
-def parse_sort(sort: Optional[str]) -> List[str]:
-    """
-    sort="driver_name,-created_at"
-    returns ["driver_name", "-created_at"]
-    """
-    if not sort:
-        return []
-    parts = [p.strip() for p in sort.split(",")]
-    return [p for p in parts if p]
-
-
-def build_order_by(sort: Optional[str], allowed: dict, default: List[str]) -> List:
-    """
-    allowed: {"driver_name": Driver.driver_name, ...}
-    default: ["-updated_at", "driver_id"] etc
-    """
-    fields = parse_sort(sort) or default
-
-    order_clauses = []
-    seen = set()
-
-    for token in fields:
-        desc = token.startswith("-")
-        key = token[1:] if desc else token
-
-        if key not in allowed:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid sort field '{key}'. Allowed: {sorted(list(allowed.keys()))}",
-            )
-
-        if key in seen:
-            continue
-        seen.add(key)
-
-        col = allowed[key]
-        order_clauses.append(col.desc() if desc else col.asc())
-
-    return order_clauses
 
 
 # -------------------------
@@ -128,15 +80,14 @@ def list_drivers(
         "created_at": Driver.created_at,
         "updated_at": Driver.updated_at,
     }
-
-    # Default sort (stable): newest updated first, then id
     default_sort = ["-updated_at", "driver_id"]
 
-    order_by = build_order_by(sort, allowed, default_sort)
-
-    # Ensure stable ordering even if user doesn't include driver_id
-    if all("driver_id" not in s.lstrip("-") for s in parse_sort(sort)):
-        order_by.append(Driver.driver_id.asc())
+    order_by = build_order_by(
+        sort=sort,
+        allowed=allowed,
+        default=default_sort,
+        stable_key="driver_id",
+    )
 
     items = (
         q.order_by(*order_by)
@@ -145,13 +96,12 @@ def list_drivers(
         .all()
     )
 
-    total_pages = paginate(total, page, page_size)
     return {
         "items": items,
         "total": total,
         "page": page,
         "page_size": page_size,
-        "total_pages": total_pages,
+        "total_pages": total_pages(total, page_size),
     }
 
 
@@ -259,15 +209,14 @@ def list_trucks(
         "created_at": Truck.created_at,
         "updated_at": Truck.updated_at,
     }
-
-    # Default sort (stable): newest updated first, then id
     default_sort = ["-updated_at", "truck_id"]
 
-    order_by = build_order_by(sort, allowed, default_sort)
-
-    # Ensure stable ordering even if user doesn't include truck_id
-    if all("truck_id" not in s.lstrip("-") for s in parse_sort(sort)):
-        order_by.append(Truck.truck_id.asc())
+    order_by = build_order_by(
+        sort=sort,
+        allowed=allowed,
+        default=default_sort,
+        stable_key="truck_id",
+    )
 
     items = (
         q.order_by(*order_by)
@@ -276,13 +225,12 @@ def list_trucks(
         .all()
     )
 
-    total_pages = paginate(total, page, page_size)
     return {
         "items": items,
         "total": total,
         "page": page,
         "page_size": page_size,
-        "total_pages": total_pages,
+        "total_pages": total_pages(total, page_size),
     }
 
 
