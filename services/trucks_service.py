@@ -1,27 +1,25 @@
-# services/trucks_service.py
-from __future__ import annotations
+from typing import Optional, Tuple
 
-from typing import Optional
-
-from sqlalchemy import or_
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Driver, Truck
-from schemas import TruckCreate, TruckUpdate
-from utils.query import build_order_by, total_pages
+from models import Truck
+from utils.query import apply_pagination, parse_sort, apply_sort
 
 
-def create_truck(db: Session, payload: TruckCreate) -> Truck:
-    if payload.driver_id is not None:
-        exists = db.query(Driver).filter(Driver.driver_id == payload.driver_id).first()
-        if not exists:
-            raise ValueError("Driver does not exist")
-
+def create_truck(
+    db: Session,
+    unit_number: str,
+    plate_number: Optional[str],
+    vin: Optional[str],
+    is_active: bool,
+) -> Truck:
     truck = Truck(
-        unit_number=payload.unit_number,
-        vin=payload.vin,
-        plate_number=payload.plate_number,
-        driver_id=payload.driver_id,
+        unit_number=unit_number,
+        plate_number=plate_number,
+        vin=vin,
+        is_active=is_active,
     )
     db.add(truck)
     db.commit()
@@ -29,35 +27,40 @@ def create_truck(db: Session, payload: TruckCreate) -> Truck:
     return truck
 
 
-def get_truck(db: Session, truck_id: int) -> Truck | None:
-    return db.query(Truck).filter(Truck.truck_id == truck_id).first()
+def get_truck(db: Session, truck_id: int) -> Truck:
+    truck = db.get(Truck, truck_id)
+    if not truck:
+        raise HTTPException(status_code=404, detail="Truck not found")
+    return truck
 
 
-def update_truck(db: Session, truck: Truck, payload: TruckUpdate) -> Truck:
-    if payload.driver_id is not None:
-        exists = db.query(Driver).filter(Driver.driver_id == payload.driver_id).first()
-        if not exists:
-            raise ValueError("Driver does not exist")
-        truck.driver_id = payload.driver_id
+def update_truck(
+    db: Session,
+    truck_id: int,
+    unit_number: Optional[str],
+    plate_number: Optional[str],
+    vin: Optional[str],
+    is_active: Optional[bool],
+) -> Truck:
+    truck = get_truck(db, truck_id)
 
-    if payload.unit_number is not None:
-        truck.unit_number = payload.unit_number
-    if payload.vin is not None:
-        truck.vin = payload.vin
-    if payload.plate_number is not None:
-        truck.plate_number = payload.plate_number
-    if payload.is_active is not None:
-        truck.is_active = payload.is_active
+    if unit_number is not None:
+        truck.unit_number = unit_number
+    if plate_number is not None:
+        truck.plate_number = plate_number
+    if vin is not None:
+        truck.vin = vin
+    if is_active is not None:
+        truck.is_active = is_active
 
-    db.add(truck)
     db.commit()
     db.refresh(truck)
     return truck
 
 
-def deactivate_truck(db: Session, truck: Truck) -> Truck:
+def deactivate_truck(db: Session, truck_id: int) -> Truck:
+    truck = get_truck(db, truck_id)
     truck.is_active = False
-    db.add(truck)
     db.commit()
     db.refresh(truck)
     return truck
@@ -67,55 +70,39 @@ def list_trucks(
     db: Session,
     page: int,
     page_size: int,
-    search: Optional[str],
-    driver_id: Optional[int],
-    is_active: Optional[bool],
     sort: Optional[str],
-):
-    q = db.query(Truck)
+    unit_number_contains: Optional[str],
+    plate_number_contains: Optional[str],
+    vin_contains: Optional[str],
+    is_active: Optional[bool],
+) -> Tuple[list[Truck], int, int]:
+    q = select(Truck)
+
+    if unit_number_contains:
+        q = q.where(Truck.unit_number.ilike(f"%{unit_number_contains}%"))
+    if plate_number_contains:
+        q = q.where(Truck.plate_number.ilike(f"%{plate_number_contains}%"))
+    if vin_contains:
+        q = q.where(Truck.vin.ilike(f"%{vin_contains}%"))
 
     if is_active is not None:
-        q = q.filter(Truck.is_active == is_active)
-
-    if driver_id is not None:
-        q = q.filter(Truck.driver_id == driver_id)
-
-    if search:
-        like = f"%{search.strip()}%"
-        q = q.filter(
-            or_(
-                Truck.unit_number.ilike(like),
-                Truck.vin.ilike(like),
-                Truck.plate_number.ilike(like),
-            )
-        )
-
-    total = q.count()
+        q = q.where(Truck.is_active == is_active)
 
     allowed = {
         "truck_id": Truck.truck_id,
         "unit_number": Truck.unit_number,
-        "vin": Truck.vin,
         "plate_number": Truck.plate_number,
-        "driver_id": Truck.driver_id,
+        "vin": Truck.vin,
         "is_active": Truck.is_active,
         "created_at": Truck.created_at,
         "updated_at": Truck.updated_at,
     }
-    default_sort = ["-updated_at", "truck_id"]
-    order_by = build_order_by(sort=sort, allowed=allowed, default=default_sort, stable_key="truck_id")
 
-    items = (
-        q.order_by(*order_by)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    sort_fields = parse_sort(sort, allowed)
+    if sort_fields:
+        q = apply_sort(q, sort_fields)
+    else:
+        q = q.order_by(Truck.truck_id.asc())
 
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages(total, page_size),
-    }
+    paged = apply_pagination(db, q, page, page_size)
+    return paged.items, paged.total, paged.total_pages

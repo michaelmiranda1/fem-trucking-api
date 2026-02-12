@@ -1,8 +1,5 @@
-# models.py
-from __future__ import annotations
-
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.orm import relationship
+from sqlalchemy import String, Boolean, DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column
 
 from db import Base
 
@@ -10,37 +7,32 @@ from db import Base
 class Driver(Base):
     __tablename__ = "drivers"
 
-    driver_id = Column(Integer, primary_key=True, index=True)
-    driver_name = Column(String(120), nullable=False, index=True)
+    driver_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    driver_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
 
-    is_active = Column(Boolean, nullable=False, server_default="1", default=True)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-
-    trucks = relationship(
-        "Truck",
-        back_populates="driver",
-        lazy="selectin",
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
 
 class Truck(Base):
     __tablename__ = "trucks"
 
-    truck_id = Column(Integer, primary_key=True, index=True)
+    truck_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
+    unit_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    plate_number: Mapped[str] = mapped_column(String(32), nullable=True, index=True)
+    vin: Mapped[str] = mapped_column(String(32), nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
 
-    unit_number = Column(String(50), nullable=False, unique=True, index=True)
-    plate_number = Column(String(20), nullable=True, index=True)
-    vin = Column(String(32), nullable=True, unique=True, index=True)
-
-    is_active = Column(Boolean, nullable=False, server_default="1", default=True)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-
-    driver_id = Column(Integer, ForeignKey("drivers.driver_id"), nullable=True)
-
-    driver = relationship(
-        "Driver",
-        back_populates="trucks",
-        lazy="selectin",
+    created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[str] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

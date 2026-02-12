@@ -1,25 +1,20 @@
-# db.py
-from __future__ import annotations
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 from config import settings
 
+
+class Base(DeclarativeBase):
+    pass
+
+
 engine = create_engine(
-    settings.MYSQL_URL,
+    settings.mysql_url,
     pool_pre_ping=True,
-    future=True,
+    pool_recycle=1800,
 )
 
-SessionLocal = sessionmaker(
-    bind=engine,
-    autoflush=False,
-    autocommit=False,
-    future=True,
-)
-
-Base = declarative_base()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_db():

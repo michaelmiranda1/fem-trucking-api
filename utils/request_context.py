@@ -1,14 +1,6 @@
-# utils/request_context.py
-from __future__ import annotations
+import contextvars
 
-from contextvars import ContextVar
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="")
 
-request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
-
-
-def set_request_id(request_id: str) -> None:
-    request_id_ctx.set(request_id)
-
-
-def get_request_id() -> str | None:
-    return request_id_ctx.get()
+def get_request_id() -> str:
+    return request_id_var.get() or ""
